@@ -11,18 +11,23 @@ Needs Kiln OS with plugin API 1.3 or newer (v0.0.6+), and a USB camera.
 
 ## Install
 
-Over SSH on the printer:
+On the printer's touch screen: **Settings > Plugins**, then **Install**
+next to **Timelapse**. Or in the console (Fluidd or HelixScreen):
+
+    INSTALL_PLUGIN NAME=timelapse ENABLE=1
+
+That clones it into `/data/ad5x/plugins/timelapse` and switches it on;
+Klipper and Moonraker restart by themselves (Kiln OS v0.0.7 or newer).
+Updates: Fluidd > Settings > Software Updates, the screen's **Update**
+button, or `UPDATE_PLUGIN NAME=timelapse`. Removing it: the screen's
+**Remove**, or `REMOVE_PLUGIN NAME=timelapse`.
+
+On Kiln OS v0.0.6, by hand over SSH:
 
     cd /data/ad5x/plugins
     su klipper -s /bin/sh -c 'git clone https://github.com/djvalic/kiln-timelapse.git timelapse'
 
-Then in the console (Fluidd or HelixScreen):
-
-    ENABLE_PLUGIN NAME=timelapse
-
-and reboot once (Moonraker loads the plugin's part at its start). Fluidd
-then has a Timelapse tab and lists **kiln-timelapse** under Settings >
-Software Updates.
+then `ENABLE_PLUGIN NAME=timelapse` and reboot once.
 
 ## Use
 
