@@ -1,0 +1,4 @@
+#!/bin/sh
+# ffmpeg with its libraries from this directory (lib/), not the system's
+D=$(dirname "$(readlink -f "$0")")
+LD_LIBRARY_PATH=$D/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} exec "$D/bin/ffmpeg" "$@"
