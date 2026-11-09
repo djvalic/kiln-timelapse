@@ -26,8 +26,13 @@ SYNC_BYTES = 4 << 20
 def _flush(fp):
     fp.flush()
     os.fsync(fp.fileno())
+    # Drop the written pages from memory; best effort: Kiln OS's MIPS
+    # kernel answers ENOSYS (errno 89), and the fsync above is what counts
     if hasattr(os, "posix_fadvise"):
-        os.posix_fadvise(fp.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        try:
+            os.posix_fadvise(fp.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        except OSError:
+            pass
 
 
 def zip_frames(zip_path, frames, sync_bytes=SYNC_BYTES):

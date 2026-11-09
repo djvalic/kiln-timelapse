@@ -181,6 +181,36 @@ def test_save_frames(nframes, size):
             check(same, "same bytes")
 
 
+def test_no_fadvise():
+    # Kiln OS's MIPS kernel: posix_fadvise raises ENOSYS; the zip still works
+    import errno
+    zspec = importlib.util.spec_from_file_location(
+        "timelapse_zip", os.path.join(os.path.dirname(COMPONENT),
+                                      "timelapse_zip.py"))
+    timelapse_zip = importlib.util.module_from_spec(zspec)
+    zspec.loader.exec_module(timelapse_zip)
+    def enosys(*a):
+        raise OSError(errno.ENOSYS, "Function not implemented")
+    real = getattr(timelapse_zip.os, "posix_fadvise", None)
+    timelapse_zip.os.posix_fadvise = enosys
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            frames = []
+            for n in range(5):
+                f = os.path.join(d, "frame%06d.jpg" % n)
+                with open(f, "wb") as fp:
+                    fp.write(os.urandom(3000))
+                frames.append(f)
+            z = os.path.join(d, "out.zip")
+            stored = timelapse_zip.zip_frames(z, frames, sync_bytes=4096)
+            with zipfile.ZipFile(z) as zf:
+                ok = stored == 5 and zf.testzip() is None
+        check(ok, "posix_fadvise ENOSYS (MIPS kernel): zip still written")
+    finally:
+        if real is not None:
+            timelapse_zip.os.posix_fadvise = real
+
+
 def test_missing_and_error():
     with tempfile.TemporaryDirectory() as tmp:
         frames_dir = os.path.join(tmp, "frames")
@@ -303,6 +333,7 @@ if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 300
     test_save_frames(n, 160_000)
     test_missing_and_error()
+    test_no_fadvise()
     test_render()
     print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
     sys.exit(1 if FAILED else 0)
