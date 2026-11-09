@@ -1,7 +1,7 @@
 {
   "name": "timelapse",
   "description": "Timelapse videos (moonraker-timelapse) with an ffmpeg built for the printer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "djvalic",
   "url": "https://github.com/djvalic/kiln-timelapse",
   "requires_os": "1.3",

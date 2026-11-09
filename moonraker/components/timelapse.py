@@ -10,9 +10,9 @@ import glob
 import re
 import shutil
 import asyncio
+import sys
 from datetime import datetime
 from tornado.ioloop import IOLoop
-from zipfile import ZipFile
 
 # Annotation imports
 from typing import (
@@ -135,6 +135,17 @@ class Timelapse:
         # create directories if they doesn't exist
         os.makedirs(self.temp_dir, exist_ok=True)
         os.makedirs(self.out_dir, exist_ok=True)
+
+        # Kiln: zip and render at low CPU and I/O priority, so they don't
+        # starve Klipper on the printer's small CPU (Kiln OS issue #40).
+        # nice is in Kiln OS's BusyBox; ionice is used when the system
+        # has it (Kiln OS's BusyBox has no ionice applet today).
+        nice = shutil.which("nice")
+        ionice = shutil.which("ionice")
+        self.kiln_nice = [nice, "-n", "19"] if nice else []
+        self.kiln_ionice = [ionice, "-c", "3"] if ionice else []
+        self.kiln_zip_script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "timelapse_zip.py")
 
         # setup eventhandlers and endpoints
         file_manager = self.server.lookup_component("file_manager")
@@ -574,21 +585,51 @@ class Timelapse:
             outfile = f"timelapse_{gcodefilename}_{date_time}"
             outfileFull = outfile + "_frames.zip"
 
-            zipObj = ZipFile(self.out_dir + outfileFull, "w")
+            # Kiln: the zip runs in a low-priority child process
+            # (timelapse_zip.py, ZIP_STORED), not in the event loop.
+            # Upstream: ZipFile(...).write() for each frame right here.
+            try:
+                saved = await self.kiln_zip_frames(
+                    self.out_dir + outfileFull, filelist)
+            finally:
+                self.saveisrunning = False
 
-            for frame in filelist:
-                zipObj.write(frame, frame.split("/")[-1])
-
-            logging.info(f"saved frames: {outfile}_frames.zip")
-
-            result.update({
-                'status': 'finished',
-                'zipfile': outfileFull
-            })
-
-            self.saveisrunning = False
+            if saved:
+                logging.info(f"saved frames: {outfile}_frames.zip")
+                result.update({
+                    'status': 'finished',
+                    'zipfile': outfileFull
+                })
+            else:
+                result.update({
+                    'status': 'error',
+                    'msg': f"saving frames failed: {outfileFull}"
+                })
 
         return result
+
+    # Kiln: run timelapse_zip.py (nice 19, ionice -c3 if present) and wait
+    # for it without blocking the event loop.
+    async def kiln_zip_frames(self, zippath, filelist) -> bool:
+        cmd = self.kiln_nice + self.kiln_ionice + [
+            sys.executable, "-I", self.kiln_zip_script, zippath]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT)
+            out, _ = await proc.communicate(
+                "\n".join(filelist).encode())
+        except Exception:
+            logging.exception(f"timelapse: error running {cmd}")
+            return False
+        output = out.decode(errors="replace").strip()
+        if proc.returncode != 0:
+            logging.info(f"timelapse: saving frames failed "
+                         f"({proc.returncode}): {output}")
+            return False
+        logging.info(f"timelapse: {zippath}: {output}")
+        return True
 
     def call_render(self, byrendermacro=False) -> None:
         self.byrendermacro = byrendermacro
@@ -681,11 +722,17 @@ class Timelapse:
                 filterParam = " -vf 'vflip'"
 
             # build shell command
-            cmd = self.ffmpeg_binary_path \
+            # Kiln: nice 19 (and ionice -c3 if present), and one thread
+            # for decoding and for x264 (upstream: -threads 2 for x264
+            # only), so a core stays free for Klipper (Kiln OS issue
+            # #40). "-threads 2" in extraoutputparams overrides it.
+            cmd = " ".join(self.kiln_nice + self.kiln_ionice
+                           + [self.ffmpeg_binary_path]) \
                 + " -r " + str(fps) \
+                + " -threads 1" \
                 + " -i '" + inputfiles + "'" \
                 + filterParam \
-                + " -threads 2 -g 5" \
+                + " -threads 1 -g 5" \
                 + " -crf " + str(self.config['constant_rate_factor']) \
                 + " -vcodec libx264" \
                 + " -pix_fmt " + self.config['pixelformat'] \
@@ -751,7 +798,9 @@ class Timelapse:
 
                     # apply rotation previewimage if needed
                     if filterParam or self.config['extraoutputparams']:
-                        cmd = self.ffmpeg_binary_path \
+                        # Kiln: low priority, as the render
+                        cmd = " ".join(self.kiln_nice + self.kiln_ionice
+                                       + [self.ffmpeg_binary_path]) \
                             + " -i '" + previewFilePath + "'" \
                             + filterParam \
                             + " -an" \

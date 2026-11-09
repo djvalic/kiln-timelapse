@@ -50,6 +50,13 @@ Frames are kept in `printer_data/timelapse_frames` on the data partition
 (the printer's `/tmp` is memory) and removed after rendering; videos in
 `printer_data/timelapse`.
 
+Rendering and **Save Frames** (a zip of the frames next to the video) run
+at low priority, so they don't hold up the printer: ffmpeg under
+`nice -n 19` with one thread, the zip in its own process at nice 19,
+stored (JPEGs don't compress) and written in small steps. Both take longer
+than upstream's for it. More render threads: `-threads 2` in Fluidd's
+"extra output parameters".
+
 ## ffmpeg
 
 `ffmpeg/` holds ffmpeg 6.1.5 with x264, built from source with Kiln OS's
@@ -64,10 +71,12 @@ attached to this repository's `ffmpeg-sources` release.
 |---|---|
 | `plugin.json`, `plugin.cfg` | Plugin metadata; includes `timelapse.cfg` |
 | `timelapse.cfg` | moonraker-timelapse's Klipper macros (unchanged) |
-| `moonraker/components/timelapse.py` | moonraker-timelapse's component (unchanged, see `UPSTREAM`) |
+| `moonraker/components/timelapse.py` | moonraker-timelapse's component, with Kiln changes for the printer's small CPU (listed in `UPSTREAM`) |
+| `moonraker/components/timelapse_zip.py` | Save Frames zip, run by the component as a low-priority process |
 | `moonraker.conf` | `[timelapse]` paths for the AD5X, and the update entry |
 | `ffmpeg/` | `ffmpeg` (wrapper), `bin/`, `lib/`, `SOURCES` |
 | `tools/` | `build_ffmpeg.sh`, `ffmpeg.config` |
+| `test_timelapse_zip.py` | Laptop test of the Kiln changes (zip off the event loop, valid stored zip, render command) |
 
 ## Licence
 

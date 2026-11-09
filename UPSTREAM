@@ -1,3 +1,22 @@
-moonraker/components/timelapse.py and timelapse.cfg are unchanged copies of
+moonraker/components/timelapse.py and timelapse.cfg are copies of
 https://github.com/mainsail-crew/moonraker-timelapse at commit
 c7fff11e542b95e0e15b8bb1443cea8159ac0274 (GPL-3.0, Christoph Frei, Alex Zellner).
+
+timelapse.cfg is unchanged. timelapse.py has these Kiln changes, each marked
+"Kiln:" in the code (Kiln OS issue #40: "Save Frames" zipped 725 frames,
+117 MB, in Moonraker's event loop, which blocked it for 15 s and starved the
+printer enough that Klipper's MCU shut down with "Timer too close"):
+
+- Save Frames: the zip runs in a child process, timelapse_zip.py (new file,
+  next to the component), at nice 19 (and ionice -c3 when the system has
+  ionice), instead of ZipFile.write() in the event loop. Frames are stored
+  (ZIP_STORED, as upstream's default; JPEGs don't compress), the zip is
+  written in fsynced 4 MB steps and dropped from the page cache. Same zip
+  name and member names as upstream. A failed zip returns status "error"
+  and no longer leaves saveisrunning set; a frame removed meanwhile is
+  skipped.
+- Render: ffmpeg (and the preview image rotation) runs under nice -n 19
+  (and ionice -c3 when present), with -threads 1 for decoding and for x264
+  (upstream: -threads 2 for x264). "-threads 2" in extraoutputparams
+  overrides it.
+- The unused "from zipfile import ZipFile" import is gone.
