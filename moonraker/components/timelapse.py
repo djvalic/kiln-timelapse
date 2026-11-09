@@ -139,7 +139,7 @@ class Timelapse:
         # Kiln: zip and render at low CPU and I/O priority, so they don't
         # starve Klipper on the printer's small CPU (Kiln OS issue #40).
         # nice is in Kiln OS's BusyBox; ionice is used when the system
-        # has it (Kiln OS's BusyBox has no ionice applet today).
+        # has it (Kiln OS from v0.0.52; older versions have no ionice).
         nice = shutil.which("nice")
         ionice = shutil.which("ionice")
         self.kiln_nice = [nice, "-n", "19"] if nice else []
